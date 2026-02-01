@@ -68,10 +68,7 @@ class BacktestEngine:
         )
 
         coin_data_for_sim = {}
-        shifted_signals={}
-        logreturns_asset={}
-        logreturns_strat={}
-
+        strat_data={}
         all_dates = pd.DatetimeIndex(self.all_dates).sort_values()
 
         #creates coin_data_df with all_dates timestamps only
@@ -91,7 +88,7 @@ class BacktestEngine:
                 direction="backward",   # ← latest past observation
                 allow_exact_matches=True
             ).set_index("timestamp")
-            
+            coin_data_for_sim[sym] = coin_data_for_sim_df
 
         signals=self.strategy.generate_signals(coin_data_for_sim)
         
@@ -102,7 +99,7 @@ class BacktestEngine:
                     "signals":0,
                     "position": 0,
                     "trade": 0,
-                    "fee":0;                    
+                    "fee":0,                    
                     "nav":0
                 },
                 index=coin_data_for_sim_df.index,
@@ -113,7 +110,7 @@ class BacktestEngine:
             positions.iloc[0] = 0
 
             is_rebalance = signals_df.index.isin(rebalance_dates)
-            prev_signal = signals.shift(1)
+            prev_signal = signals_df.shift(1)
 
             for i in range(1, len(signals_df)):
                 positions.iloc[i] = (
@@ -123,18 +120,34 @@ class BacktestEngine:
                 )
 
             trade=positions.diff()
-            fee=cfg.FEE*trade*coin_data_for_sim_df['open']
+            fee=cfg.FEE*trade.abs()
+            logreturns_asset=np.log(coin_data_for_sim_df['close']).diff()
+            logreturns_strat=logreturns_asset*positions-fee
+            nav = cfg.INITIAL_CAPITAL * np.exp(logreturns_strat.cumsum())
 
-            coin_data_for_sim[sym] = coin_data_for_sim_df
-            logreturns_asset[sym] = np.log(coin_data_for_sim_df['close']).diff()
+            strat_data_df = pd.concat(
+                    [
+                        nav,
+                        signals_df,
+                        positions,
+                        fee,
+                        logreturns_strat,
+                        logreturns_asset
+                    ],
+                axis=1,
+                keys=[
+                    "nav",
+                    "signals_df",
+                    "positions",
+                    "fee",                    
+                    "logreturns_strat",
+                    "logreturns_asset"
+                ]
+            )
+            strat_data[sym]=strat_data_df
 
-            
-            # signals_rebalance_dates=
-            shifted_signals[sym] = signals[sym].shift(1).fillna(0)
-            logreturns_strat[sym] = logreturns_asset[sym] * shifted_signals[sym]
 
-        print(logreturns_asset)
-        print(logreturns_strat)
-        print(signals)
+
+        print(strat_data)
         
         return logreturns_strat
