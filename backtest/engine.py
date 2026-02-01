@@ -74,7 +74,7 @@ class BacktestEngine:
 
         all_dates = pd.DatetimeIndex(self.all_dates).sort_values()
 
-        #creates coin_data_df with all_dates timestamps
+        #creates coin_data_df with all_dates timestamps only
         for sym, df in self.coin_data.items():
 
             # Reset index as explicit column to be able to usemerge_asof (index doesnot work)
@@ -82,6 +82,8 @@ class BacktestEngine:
             target = pd.DataFrame({"timestamp": all_dates})
 
             # As-of merge
+            # index name = 'timestamp'
+            # original timestamps of df_reset are dropped
             coin_data_for_sim_df = pd.merge_asof(
                 target,
                 df_reset,
@@ -90,19 +92,43 @@ class BacktestEngine:
                 allow_exact_matches=True
             ).set_index("timestamp")
             
+
+        signals=self.strategy.generate_signals(coin_data_for_sim)
+        
+        for sym in self.coin_data:
+
             strat_data_df = pd.DataFrame(
                 {
-                    "positions": 0,
+                    "signals":0,
+                    "position": 0,
                     "trade": 0,
-                    "fee":0;
+                    "fee":0;                    
+                    "nav":0
                 },
                 index=coin_data_for_sim_df.index,
             )
+            coin_data_for_sim_df=coin_data_for_sim[sym]
+            signals_df=signals[sym]
+            positions = pd.Series(index=signals_df.index, dtype="float64")
+            positions.iloc[0] = 0
+
+            is_rebalance = signals_df.index.isin(rebalance_dates)
+            prev_signal = signals.shift(1)
+
+            for i in range(1, len(signals_df)):
+                positions.iloc[i] = (
+                    1 if (is_rebalance[i] and prev_signal.iloc[i] == 1)
+                    else 0 if (is_rebalance[i] and prev_signal.iloc[i] == 0)
+                    else positions.iloc[i - 1]
+                )
+
+            trade=positions.diff()
+            fee=cfg.FEE*trade*coin_data_for_sim_df['open']
 
             coin_data_for_sim[sym] = coin_data_for_sim_df
             logreturns_asset[sym] = np.log(coin_data_for_sim_df['close']).diff()
 
-            signals=self.strategy.generate_signals(coin_data_for_sim)
+            
             # signals_rebalance_dates=
             shifted_signals[sym] = signals[sym].shift(1).fillna(0)
             logreturns_strat[sym] = logreturns_asset[sym] * shifted_signals[sym]
