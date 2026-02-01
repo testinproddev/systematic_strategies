@@ -74,6 +74,7 @@ class BacktestEngine:
 
         all_dates = pd.DatetimeIndex(self.all_dates).sort_values()
 
+        #creates coin_data_df with all_dates timestamps
         for sym, df in self.coin_data.items():
 
             # Reset index as explicit column to be able to usemerge_asof (index doesnot work)
@@ -88,6 +89,15 @@ class BacktestEngine:
                 direction="backward",   # ← latest past observation
                 allow_exact_matches=True
             ).set_index("timestamp")
+            
+            strat_data_df = pd.DataFrame(
+                {
+                    "positions": 0,
+                    "trade": 0,
+                    "fee":0;
+                },
+                index=coin_data_for_sim_df.index,
+            )
 
             coin_data_for_sim[sym] = coin_data_for_sim_df
             logreturns_asset[sym] = np.log(coin_data_for_sim_df['close']).diff()
